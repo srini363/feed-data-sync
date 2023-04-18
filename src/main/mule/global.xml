@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<global-property doc:name="Global Property" doc:id="495c9fd3-dd14-4103-b5df-d6275602fef9" name="mule.env" value="dev" />
+	<configuration-properties doc:name="Configuration properties" doc:id="ed31f8d7-9788-4cd5-b9ca-7fd8d1558ea4" file="config/common-properties.yaml" />
+	<configuration-properties doc:name="Configuration properties" doc:id="c9b6ff24-847b-4a82-a4ad-a9429c49b41a" file="config/${mule.env}-properties.yaml" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="2b70ce58-040f-4bc5-94f0-1392444e6636" file="config/secure/${mule.env}-secure-properties.yaml" key="Fullstacklabs23" >
+		<secure-properties:encrypt algorithm="Blowfish" />
+	</secure-properties:config>
+</mule>

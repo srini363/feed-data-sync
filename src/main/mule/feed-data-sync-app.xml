@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+	<http:request-config name="Reddit_HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="65b5f490-3732-4340-b07b-f1fb833a939c" >
+		<http:request-connection protocol="HTTPS" host="${reddit-api.host}" />
+	</http:request-config>
+	<json-logger:config name="JSON_Logger_Config" doc:name="JSON Logger Config" doc:id="3c4be992-4fec-4b6c-a904-882830d3b14c" environment="${mule.env}" />
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="9745c9a9-5f4e-4ab8-863d-c1d67fc25b10" >
+		<salesforce:basic-connection username="${secure::salesforce.username}" password="${secure::salesforce.password}" securityToken="${secure::salesforce.token}" />
+	</salesforce:sfdc-config>
+	<flow name="feed-data-sync-appFlow" doc:id="33e41ad7-c7d0-4867-ba0f-4f5de638c0fb" >
+		<scheduler doc:name="feed-data-sync-scheduler" doc:id="667e89b3-1e76-4285-ad00-df86f3a45fa9" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="1" timeUnit="HOURS"/>
+			</scheduling-strategy>
+		</scheduler>
+		<logger level="INFO" doc:name="Logger" doc:id="9a8ca10d-bb04-4b93-beab-9d42c677ded3" message='#["Starting the feed data sync process"]'/>
+		<http:request method="GET" doc:name="Request to reddit feed api" doc:id="f58e1473-a350-4f7d-83c6-16e600c8ec06" config-ref="Reddit_HTTP_Request_configuration" path="${reddit-api.base-path}"/>
+		<ee:transform doc:name="Transform Message" doc:id="7c697e1f-67fc-47f7-9d7f-32c5c0acd74a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.data.children.data filter ($.downs <= 0 and $.ups >= 100  ) map {
+
+"id__c":$.id default "",
+"title__c": $.title,
+"author__c": $.author,
+"thumbnail__c": $.thumbnail,
+"selftext__c": $.selftext,
+"ups__c": $.ups as String,
+"downs__c": $.downs as String
+
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="error" ><![CDATA[[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<json-logger:logger doc:name="Logger" doc:id="94e1651d-5b87-4d51-8d1c-d026daeeeead" config-ref="JSON_Logger_Config" message='#["Logging the data from reddit api"]'>
+			<json-logger:content ><![CDATA[#[output application/json ---
+{
+ 	payload: payload
+}]]]></json-logger:content>
+		</json-logger:logger>
+		<foreach doc:name="For Each" doc:id="b87da859-3a77-4445-8437-fb731711fc66" collection="payload">
+			<try doc:name="Try" doc:id="dc18b3ca-1357-453c-be31-4f875882b65d" >
+				<flow-ref doc:name="feed-data-sync-appSub_Flow" doc:id="234b6b87-9ae7-4100-8704-01f16c184793" name="feed-data-sync-appSub_Flow" />
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="28834ecc-3e8b-4c19-939e-eeb0a7327717" >
+						<json-logger:logger doc:name="Logger" doc:id="3cdbc5a6-56f3-41a6-9372-2e2a2296458a" config-ref="JSON_Logger_Config" tracePoint="EXCEPTION" message='"Exception"'>
+							<json-logger:content ><![CDATA[#[output application/json ---
+{
+ 	error: error.detailedDescription
+}]]]></json-logger:content>
+						</json-logger:logger>
+						<ee:transform doc:name="adding error details" doc:id="5f5283a8-7ac9-4ae4-a1ef-806ad67c4bcb" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="error" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.error << {
+	payload: payload,
+	error: error.detailedDescription
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</foreach>
+		<json-logger:logger doc:name="Logger" doc:id="ea89ab7e-d0b6-4b03-85e1-af9ef922612d" config-ref="JSON_Logger_Config" message='#["Failure Records"]'>
+			<json-logger:content ><![CDATA[#[output application/json ---
+{
+ 	error : vars.error
+}]]]></json-logger:content>
+		</json-logger:logger>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="2516e165-93f5-4db6-aef9-915001e8c877" >
+				<json-logger:logger doc:name="Logger" doc:id="77048e24-758a-4b83-94bd-0559175b589e" config-ref="JSON_Logger_Config" tracePoint="EXCEPTION" message='"Common Exception"'>
+					<json-logger:content ><![CDATA[#[output application/json ---
+{
+ 	error: error.detailedDescription
+}]]]></json-logger:content>
+				</json-logger:logger>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<sub-flow name="feed-data-sync-appSub_Flow" doc:id="06da7dbb-e287-4462-b131-03e41e39000d" >
+		<salesforce:query doc:name="Query the SF" doc:id="cff508c3-3546-4174-913f-e7d462d03d1c" config-ref="Salesforce_Config" target="query_data">
+			<salesforce:salesforce-query ><![CDATA[select id,id__c from  feed__c where id__c = ':id']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[output application/java
+---
+{
+	"id" : payload.id__c
+}]]]></salesforce:parameters>
+		</salesforce:query>
+		<choice doc:name="Choice" doc:id="dfe4527c-13f1-40b0-ba00-dfcb4cac3767" >
+			<when expression="#[vars.query_data[0].Id == null]">
+				<salesforce:create type="Feed__c" doc:name="Create the record in SF" doc:id="d1319f95-1184-41e0-b3aa-8f303139e301" config-ref="Salesforce_Config">
+					<salesforce:records ><![CDATA[#[[payload]]]]></salesforce:records>
+				</salesforce:create>
+				<logger level="INFO" doc:name="Successful Logging" doc:id="69717210-595d-4534-8d35-7b08ad40ddef" message='#["Record is created successfully"]'/>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Duplicate Logging" doc:id="f723b4fc-7571-4436-90c6-b6816649be44" message='#["Duplicate record"]'/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

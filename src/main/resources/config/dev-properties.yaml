@@ -1,0 +1,8 @@
+#develop env
+
+reddit-api:
+  host: "www.reddit.com"
+  port: "443"
+  base-path: "/r/aww.json"
+
+
